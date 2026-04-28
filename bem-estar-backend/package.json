@@ -1,0 +1,11 @@
+{
+  "dependencies": {
+    "@nestjs/config": "^4.0.4",
+    "@prisma/client": "^5.22.0",
+    "firebase-admin": "^13.8.0",
+    "openai": "^6.35.0"
+  },
+  "devDependencies": {
+    "prisma": "^5.22.0"
+  }
+}

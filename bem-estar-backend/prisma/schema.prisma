@@ -1,0 +1,23 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite" // Usando SQLite para facilitar o desenvolvimento local
+  url = env("DATABASE_URL")
+}
+
+// Tabela que vai guardar o histórico de check-ins do usuário
+model Checkin {
+  id              String   @id @default(uuid())
+  userId          String   // Vai guardar o ID do usuário gerado lá no Firebase Auth
+  sono            String   // Ex: "Dormi mal", "Dormi bem"
+  humor           String   // Ex: "Estressado", "Feliz"
+  alimentacao     String   // Ex: "Comi muita besteira", "Comi bem"
+  conselhoIA      String   // A resposta que a OpenAI vai gerar
+  dataCriacao     DateTime @default(now())
+
+  @@map("checkins") // Nome da tabela no banco
+}
