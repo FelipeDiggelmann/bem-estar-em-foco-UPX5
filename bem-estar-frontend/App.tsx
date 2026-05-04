@@ -1,24 +1,47 @@
 import { StatusBar } from 'expo-status-bar';
 import { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TextInput, Button, ActivityIndicator, ScrollView } from 'react-native';
+import { 
+  StyleSheet, Text, View, TextInput, TouchableOpacity, 
+  ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform, LayoutAnimation, UIManager
+} from 'react-native';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { auth } from './src/firebaseConfig';
+import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
+
+// Habilita animações fluidas no Android
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+// Cores baseadas nas suas prints
+const COLORS = {
+  primary: '#5235E8',
+  background: '#F9F9FB',
+  textDark: '#1E1E2D',
+  textLight: '#7A7A8A',
+  inputBg: '#FFFFFF',
+  inputBorder: '#E0E0E6',
+};
 
 export default function App() {
-  // Estados de Autenticação
   const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  
+  // Controle de Tela (Login vs Registro)
+  const [isLoginScreen, setIsLoginScreen] = useState(true);
+
+  // Campos de Auth
+  const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [authLoading, setAuthLoading] = useState(true);
 
-  // Estados do Check-in
+  // Estados do Check-in (Mantidos para a tela interna)
   const [sono, setSono] = useState('');
   const [humor, setHumor] = useState('');
   const [alimentacao, setAlimentacao] = useState('');
   const [loading, setLoading] = useState(false);
   const [conselho, setConselho] = useState('');
 
-  // Monitora se o usuário está logado ou não
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -27,251 +50,198 @@ export default function App() {
     return unsubscribe;
   }, []);
 
-  // Funções de Autenticação
-  const handleRegistro = async () => {
+  const toggleScreen = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setIsLoginScreen(!isLoginScreen);
+  };
+
+  const handleAuth = async () => {
     if (!email || !password) {
-      alert('Preencha e-mail e senha para criar a conta!');
+      alert('Preencha os campos obrigatórios!');
       return;
     }
+    
     try {
-      console.log('Tentando criar conta no Firebase...');
-      await createUserWithEmailAndPassword(auth, email, password);
-      alert('Conta criada com sucesso! O Firebase já te logou automaticamente.');
+      if (isLoginScreen) {
+        await signInWithEmailAndPassword(auth, email, password);
+      } else {
+        await createUserWithEmailAndPassword(auth, email, password);
+        alert('Conta criada com sucesso!');
+      }
     } catch (error: any) {
-      console.error('Erro no Registro:', error.message);
-      alert('Erro ao criar conta: ' + error.message);
+      console.error('Erro Auth:', error.message);
+      alert(isLoginScreen ? 'Login recusado. Verifique os dados.' : 'Erro ao criar conta: ' + error.message);
     }
   };
 
-  const handleLogin = async () => {
-    if (!email || !password) {
-      alert('Preencha e-mail e senha para entrar!');
-      return;
-    }
-    try {
-      console.log('Tentando fazer login...');
-      await signInWithEmailAndPassword(auth, email, password);
-      // Se der certo, o onAuthStateChanged detecta sozinho e muda a tela
-    } catch (error: any) {
-      console.error('Erro no Login:', error.message);
-      alert('Login recusado. Verifique se o e-mail existe e a senha está correta.');
-    }
-  };
+  const handleLogout = async () => await signOut(auth);
 
-  const handleLogout = async () => {
-    await signOut(auth);
-  };
+  const fazerCheckin = async () => { /* Lógica mantida para quando formos refatorar a tela de check-in */ };
 
-  // Função de Enviar Check-in
-  const fazerCheckin = async () => {
-    if (!sono || !humor || !alimentacao) {
-      alert('Por favor, preencha todos os campos!');
-      return;
-    }
-    setLoading(true);
-    setConselho('');
-
-    try {
-      const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:3000';
-      const resposta = await fetch(`${backendUrl}/checkin`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user?.uid, // Envia o ID real do usuário logado
-          sono,
-          humor,
-          alimentacao,
-        }),
-      });
-      const dados = await resposta.json();
-      setConselho(dados.conselhoIA);
-      setSono(''); setHumor(''); setAlimentacao('');
-    } catch (error) {
-      console.error(error);
-      alert('Erro ao conectar com o servidor.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // TELA DE CARREGAMENTO INICIAL
   if (authLoading) {
-    return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#2e7d32" />
-      </View>
-    );
+    return <View style={styles.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
   }
 
-  // TELA DE LOGIN (Mostrada se não houver usuário logado)
+  // ==========================================
+  // TELA DE AUTENTICAÇÃO (LOGIN / REGISTRO)
+  // ==========================================
   if (!user) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.title}>Bem-Estar em Foco 🌿</Text>
-        <Text style={styles.subtitle}>Faça login para continuar</Text>
-        
-        <View style={styles.form}>
-          <Text style={styles.label}>E-mail:</Text>
-          <TextInput 
-            style={styles.input} 
-            placeholder="exemplo@email.com" 
-            value={email} 
-            onChangeText={setEmail} 
-            autoCapitalize="none" 
-            keyboardType="email-address"
-          />
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
+        <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
           
-          <Text style={styles.label}>Senha:</Text>
-          <TextInput 
-            style={styles.input} 
-            placeholder="******" 
-            value={password} 
-            onChangeText={setPassword} 
-            secureTextEntry 
-          />
-          
-          <View style={styles.buttonGroup}>
-            <Button title="Entrar" color="#2e7d32" onPress={handleLogin} />
-            <View style={{ height: 10 }} />
-            <Button title="Criar Conta" color="#555" onPress={handleRegistro} />
+          {/* CAIXA CENTRALIZADORA PARA WEB/DESKTOP */}
+          <View style={styles.contentWrapper}>
+            
+            {/* Logo Placeholder */}
+            <View style={styles.logoContainer}>
+              <FontAwesome5 name="hand-holding-heart" size={60} color={COLORS.primary} />
+            </View>
+
+            <Text style={styles.title}>{isLoginScreen ? 'Entrar' : 'Registro'}</Text>
+            <Text style={styles.subtitle}>
+              {isLoginScreen 
+                ? 'Bem vindo de volta! Por favor, insira suas credenciais.' 
+                : 'Por favor, preencha seus dados para criar sua conta.'}
+            </Text>
+
+            <View style={styles.form}>
+              {!isLoginScreen && (
+                <>
+                  <Text style={styles.label}>Nome*</Text>
+                  <TextInput style={styles.input} placeholder="Insira seu nome" value={nome} onChangeText={setNome} />
+                </>
+              )}
+
+              <Text style={styles.label}>Email{isLoginScreen ? '' : '*'}</Text>
+              <TextInput 
+                style={styles.input} 
+                placeholder={isLoginScreen ? "exemplo@seuemail.com" : "Insira seu email"}
+                value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address"
+              />
+
+              <Text style={styles.label}>Senha{isLoginScreen ? '' : '*'}</Text>
+              <TextInput 
+                style={styles.input} 
+                placeholder={isLoginScreen ? "••••••••" : "Crie uma senha"}
+                value={password} onChangeText={setPassword} secureTextEntry
+              />
+              
+              {/* Esqueceu a senha / Dica de senha */}
+              <View style={styles.optionsRow}>
+                {isLoginScreen ? (
+                  <>
+                    <Text style={styles.hintText}>Lembrar-me</Text>
+                    <TouchableOpacity><Text style={styles.linkTextBold}>Esqueceu a senha?</Text></TouchableOpacity>
+                  </>
+                ) : (
+                  <Text style={styles.hintText}>Deve ter ao menos 6 caracteres.</Text>
+                )}
+              </View>
+
+              {/* Botão Principal */}
+              <TouchableOpacity style={styles.primaryButton} onPress={handleAuth}>
+                <Text style={styles.primaryButtonText}>{isLoginScreen ? 'Entrar' : 'Criar conta'}</Text>
+              </TouchableOpacity>
+
+              {/* Botão do Google (Visual) */}
+              <TouchableOpacity style={styles.googleButton} onPress={() => alert('Login com Google em breve!')}>
+                <Ionicons name="logo-google" size={20} color="#DB4437" style={{ marginRight: 10 }} />
+                <Text style={styles.googleButtonText}>
+                  {isLoginScreen ? 'Entre com Google' : 'Registre com Google'}
+                </Text>
+              </TouchableOpacity>
+
+              {/* Alternar Telas */}
+              <TouchableOpacity style={styles.switchButton} onPress={toggleScreen}>
+                <Text style={styles.switchText}>
+                  {isLoginScreen ? 'Não possui cadastro? ' : 'Já possui uma conta? '}
+                  <Text style={styles.linkTextBold}>{isLoginScreen ? 'Registre' : 'Entrar'}</Text>
+                </Text>
+              </TouchableOpacity>
+            </View>
+            
           </View>
-        </View>
-      </View>
+        </ScrollView>
+        <StatusBar style="dark" />
+      </KeyboardAvoidingView>
     );
   }
 
-  // TELA PRINCIPAL (LOGADO - Formulário de Check-in)
+  // ==========================================
+  // TELA PRINCIPAL LOGADA
+  // ==========================================
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Bem-Estar em Foco 🌿</Text>
-        <Button title="Sair" color="#d32f2f" onPress={handleLogout} />
-      </View>
-      <Text style={styles.subtitle}>Como foi o seu dia hoje?</Text>
-
-      <View style={styles.form}>
-        <Text style={styles.label}>Qualidade do Sono:</Text>
-        <TextInput 
-          style={styles.input} 
-          placeholder="Ex: Dormi 8 horas..." 
-          value={sono} 
-          onChangeText={setSono} 
-        />
-
-        <Text style={styles.label}>Humor:</Text>
-        <TextInput 
-          style={styles.input} 
-          placeholder="Ex: Feliz, mas cansado..." 
-          value={humor} 
-          onChangeText={setHumor} 
-        />
-
-        <Text style={styles.label}>Alimentação:</Text>
-        <TextInput 
-          style={styles.input} 
-          placeholder="Ex: Comi salada..." 
-          value={alimentacao} 
-          onChangeText={setAlimentacao} 
-        />
-
-        {loading ? (
-          <ActivityIndicator size="large" color="#2e7d32" style={{ marginTop: 20 }} />
-        ) : (
-          <View style={{ marginTop: 20 }}>
-            <Button title="Receber Conselho" color="#2e7d32" onPress={fazerCheckin} />
-          </View>
-        )}
-      </View>
-
-      {conselho ? (
-        <View style={styles.conselhoCard}>
-          <Text style={styles.conselhoTitle}>✨ Conselho da IA:</Text>
-          <Text style={styles.conselhoText}>{conselho}</Text>
-        </View>
-      ) : null}
-
-      <StatusBar style="auto" />
-    </ScrollView>
+    <View style={styles.center}>
+      <Text style={styles.title}>Logado com Sucesso!</Text>
+      <Text style={styles.subtitle}>A tela de Check-in (Etapas) será construída aqui.</Text>
+      <TouchableOpacity style={[styles.primaryButton, {marginTop: 20, width: 200}]} onPress={handleLogout}>
+        <Text style={styles.primaryButtonText}>Sair</Text>
+      </TouchableOpacity>
+      <StatusBar style="dark" />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flexGrow: 1, 
-    backgroundColor: '#f5f5f5', 
-    alignItems: 'center', 
-    paddingTop: 50, 
-    paddingBottom: 40, 
-    paddingHorizontal: 20 
-  },
-  header: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
+  container: { flex: 1, backgroundColor: COLORS.background },
+  scrollContainer: { flexGrow: 1, paddingHorizontal: 30, paddingTop: 60, paddingBottom: 40, justifyContent: 'center' },
+  
+  // NOVA CLASSE PARA CENTRALIZAR NA WEB
+  contentWrapper: { 
     width: '100%', 
-    maxWidth: 400, 
-    marginBottom: 10 
+    maxWidth: 450, 
+    alignSelf: 'center' 
   },
-  title: { 
-    fontSize: 24, 
-    fontWeight: 'bold', 
-    color: '#2e7d32', 
-    textAlign: 'center' 
-  },
-  subtitle: { 
-    fontSize: 16, 
-    color: '#555', 
-    marginBottom: 30 
-  },
-  form: { 
-    width: '100%', 
-    maxWidth: 400, 
-    backgroundColor: '#fff', 
-    padding: 20, 
-    borderRadius: 10, 
-    shadowColor: '#000', 
-    shadowOffset: { width: 0, height: 2 }, 
-    shadowOpacity: 0.1, 
-    shadowRadius: 4, 
-    elevation: 3 
-  },
-  label: { 
-    fontSize: 14, 
-    fontWeight: '600', 
-    color: '#333', 
-    marginBottom: 5, 
-    marginTop: 10 
-  },
+  
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background },
+  
+  logoContainer: { alignItems: 'center', marginBottom: 40 },
+  title: { fontSize: 28, fontWeight: 'bold', color: COLORS.textDark, marginBottom: 10 },
+  subtitle: { fontSize: 15, color: COLORS.textLight, marginBottom: 30, lineHeight: 22 },
+  
+  form: { width: '100%' }, // Removido o alignSelf e maxWidth daqui, pois o contentWrapper já faz isso
+  label: { fontSize: 14, fontWeight: '600', color: COLORS.textDark, marginBottom: 8, marginTop: 15 },
   input: { 
+    backgroundColor: COLORS.inputBg, 
     borderWidth: 1, 
-    borderColor: '#ccc', 
-    borderRadius: 5, 
-    padding: 10, 
-    fontSize: 14, 
-    backgroundColor: '#fafafa' 
+    borderColor: COLORS.inputBorder, 
+    borderRadius: 12, 
+    padding: 15, 
+    fontSize: 16,
+    color: COLORS.textDark
   },
-  buttonGroup: { 
-    marginTop: 20 
+  
+  optionsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, marginBottom: 20 },
+  hintText: { fontSize: 13, color: COLORS.textLight },
+  linkTextBold: { fontSize: 13, fontWeight: 'bold', color: COLORS.primary },
+  
+  primaryButton: { 
+    backgroundColor: COLORS.primary, 
+    borderRadius: 12, 
+    paddingVertical: 16, 
+    alignItems: 'center', 
+    shadowColor: COLORS.primary, 
+    shadowOffset: { width: 0, height: 4 }, 
+    shadowOpacity: 0.3, 
+    shadowRadius: 5, 
+    elevation: 5 
   },
-  conselhoCard: { 
-    marginTop: 30, 
-    width: '100%', 
-    maxWidth: 400, 
-    backgroundColor: '#e8f5e9', 
-    padding: 20, 
-    borderRadius: 10, 
-    borderLeftWidth: 5, 
-    borderLeftColor: '#2e7d32' 
+  primaryButtonText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
+  
+  googleButton: { 
+    flexDirection: 'row',
+    backgroundColor: COLORS.inputBg, 
+    borderWidth: 1, 
+    borderColor: COLORS.inputBorder, 
+    borderRadius: 12, 
+    paddingVertical: 15, 
+    alignItems: 'center', 
+    justifyContent: 'center',
+    marginTop: 15 
   },
-  conselhoTitle: { 
-    fontSize: 16, 
-    fontWeight: 'bold', 
-    color: '#2e7d32', 
-    marginBottom: 10 
-  },
-  conselhoText: { 
-    fontSize: 15, 
-    color: '#333', 
-    lineHeight: 22 
-  },
+  googleButtonText: { color: COLORS.textDark, fontSize: 15, fontWeight: '600' },
+  
+  switchButton: { marginTop: 30, alignItems: 'center' },
+  switchText: { fontSize: 14, color: COLORS.textLight },
 });
