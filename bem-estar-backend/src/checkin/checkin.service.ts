@@ -2,19 +2,36 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import OpenAI from 'openai';
+import * as admin from 'firebase-admin';
 
 @Injectable()
 export class CheckinService {
   private openai: OpenAI;
+  private db: admin.firestore.Firestore;
 
   constructor(private prisma: PrismaService) {
+    // Configuração da OpenAI
     this.openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
     });
+
+    // Inicialização do Firebase Admin (Verifica se já não foi inicializado antes)
+    if (!admin.apps.length) {
+      admin.initializeApp({
+        credential: admin.credential.cert({
+          projectId: process.env.FIREBASE_PROJECT_ID,
+          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+          // O replace garante que as quebras de linha da chave privada sejam lidas corretamente
+          privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+        }),
+      });
+    }
+    
+    this.db = admin.firestore();
   }
 
   async criarCheckin(userId: string, sono: string, humor: string, alimentacao: string) {
-    let conselhoIA = "Continue cuidando de você! O importante é dar um passo de cada vez e manter a constância."; // Mensagem padrão (Plano B)
+    let conselhoIA = "Continue cuidando de você! O importante é dar um passo de cada vez e manter a constância.";
 
     const prompt = `Atue como um mentor de saúde e bem-estar positivo e acolhedor. 
     Um usuário relatou o seguinte sobre o seu dia hoje:
@@ -24,33 +41,35 @@ export class CheckinService {
     
     Crie uma mensagem curta (máximo 2 ou 3 frases) de incentivo e dê uma única dica prática para ajudá-lo a melhorar ou manter o bem-estar amanhã. Não dê diagnósticos médicos.`;
 
-    // Tentamos chamar a IA
     try {
       const aiResponse = await this.openai.chat.completions.create({
         messages: [{ role: 'user', content: prompt }],
         model: 'gpt-3.5-turbo',
       });
       
-      // Se der certo, substituímos a mensagem padrão pela gerada pela IA
       if (aiResponse.choices[0].message.content) {
         conselhoIA = aiResponse.choices[0].message.content;
       }
     } catch (error) {
-      // Se a IA der erro (como falta de crédito), o sistema cai aqui silenciosamente e usa o Plano B
       console.log('Aviso: Falha ao gerar conselho com a OpenAI. Usando mensagem padrão.');
     }
 
-    // Salvamos no banco de dados independentemente de a IA ter funcionado ou não
-    const checkinSalvo = await this.prisma.checkin.create({
-      data: {
-        userId,
-        sono,
-        humor,
-        alimentacao,
-        conselhoIA,
-      },
-    });
+    // NOVA LÓGICA: Salvando no Firebase Firestore em vez do Prisma/SQLite
+    const checkinData = {
+      userId,
+      sono,
+      humor,
+      alimentacao,
+      conselhoIA,
+      dataCriacao: admin.firestore.FieldValue.serverTimestamp(), // Salva a hora exata do servidor
+    };
 
-    return checkinSalvo;
+    // Cria a coleção "checkins" automaticamente e adiciona o documento
+    const docRef = await this.db.collection('checkins').add(checkinData);
+
+    return {
+      id: docRef.id,
+      ...checkinData
+    };
   }
 }
