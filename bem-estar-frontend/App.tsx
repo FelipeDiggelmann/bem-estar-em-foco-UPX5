@@ -4,10 +4,24 @@ import {
   StyleSheet, Text, View, TextInput, TouchableOpacity, 
   ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform, LayoutAnimation, UIManager
 } from 'react-native';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, User } from 'firebase/auth';
+// ADICIONADOS: GoogleAuthProvider e signInWithPopup
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, User, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { auth } from './src/firebaseConfig';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+
+import * as Device from 'expo-device';
+import * as Notifications from 'expo-notifications';
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -73,16 +87,62 @@ export default function App() {
   const { diaSemana, dataCompleta } = obterDataFormatada();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       setAuthLoading(false);
       if (currentUser) {
         setEtapaAtual('HOME');
         resetarFormulario();
+        await agendarNotificacaoDiaria();
       }
     });
     return unsubscribe;
   }, []);
+
+  const agendarNotificacaoDiaria = async () => {
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'default',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: COLORS.primary,
+      });
+    }
+
+    if (Device.isDevice) {
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+      if (finalStatus !== 'granted') return;
+    }
+
+    await Notifications.cancelAllScheduledNotificationsAsync();
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: "Hora do seu Check-in! 💙",
+        body: "Como foi o seu dia? Tire 2 minutinhos para registrar seu bem-estar em foco.",
+        sound: true,
+      },
+      trigger: {
+        hour: 20,
+        minute: 0,
+        repeats: true,
+      } as any,
+    });
+  };
+
+  const testarNotificacaoAgora = async () => {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: "Isso é um teste! 🚀",
+        body: "As notificações do seu aplicativo Bem-Estar estão funcionando perfeitamente.",
+      },
+      trigger: null,
+    });
+  };
 
   const resetarFormulario = () => {
     setPassoFormulario(1);
@@ -103,6 +163,23 @@ export default function App() {
       else await createUserWithEmailAndPassword(auth, email, password);
     } catch (error: any) {
       alert(isLoginScreen ? 'Login recusado. Verifique os dados.' : 'Erro: ' + error.message);
+    }
+  };
+
+  // ==========================================
+  // NOVA FUNÇÃO: LOGIN COM GOOGLE
+  // ==========================================
+  const handleGoogleAuth = async () => {
+    if (Platform.OS === 'web') {
+      try {
+        const provider = new GoogleAuthProvider();
+        await signInWithPopup(auth, provider);
+        // Se der certo, o useEffect detecta sozinho e leva pra Home!
+      } catch (error: any) {
+        alert('Erro no login com Google: ' + error.message);
+      }
+    } else {
+      alert('Para o MVP, o login com Google está disponível apenas na versão Web.');
     }
   };
 
@@ -180,9 +257,6 @@ export default function App() {
     }
   };
 
-  // ==========================================
-  // FUNÇÕES DO GRÁFICO (DASHBOARD)
-  // ==========================================
   const calcularEstatisticas = () => {
     let fisico = 0, mental = 0, social = 0, geral = 0;
     historico.forEach(item => {
@@ -239,10 +313,13 @@ export default function App() {
                 ) : <Text style={styles.hintText}>Deve ter ao menos 6 caracteres.</Text>}
               </View>
               <TouchableOpacity style={styles.primaryButton} onPress={handleAuth}><Text style={styles.primaryButtonText}>{isLoginScreen ? 'Entrar' : 'Criar conta'}</Text></TouchableOpacity>
-              <TouchableOpacity style={styles.googleButton} onPress={() => alert('Login com Google em breve!')}>
+              
+              {/* BOTÃO DO GOOGLE ATIVADO AQUI */}
+              <TouchableOpacity style={styles.googleButton} onPress={handleGoogleAuth}>
                 <Ionicons name="logo-google" size={20} color="#DB4437" style={{ marginRight: 10 }} />
                 <Text style={styles.googleButtonText}>{isLoginScreen ? 'Entre com Google' : 'Registre com Google'}</Text>
               </TouchableOpacity>
+
               <TouchableOpacity style={styles.switchButton} onPress={toggleScreen}>
                 <Text style={styles.switchText}>{isLoginScreen ? 'Não possui cadastro? ' : 'Já possui uma conta? '}<Text style={styles.linkTextBold}>{isLoginScreen ? 'Registre' : 'Entrar'}</Text></Text>
               </TouchableOpacity>
@@ -255,7 +332,7 @@ export default function App() {
   }
 
   // ==========================================
-  // TELA PRINCIPAL (HOME)
+  // TELA PRINCIPAL E RESTANTE DO CÓDIGO (INTACTOS)
   // ==========================================
   if (user && etapaAtual === 'HOME') {
     return (
@@ -269,10 +346,11 @@ export default function App() {
                 <Text style={styles.homeDayText}>{diaSemana}</Text>
                 <Text style={styles.homeDateText}>{dataCompleta}</Text>
               </View>
-              <FontAwesome5 name="hand-holding-heart" size={45} color={COLORS.primary} />
+              <TouchableOpacity onPress={testarNotificacaoAgora}>
+                <FontAwesome5 name="bell" size={30} color={COLORS.primary} />
+              </TouchableOpacity>
             </View>
             <Text style={styles.homeTitle}>Qual o seu bem-estar em foco hoje?</Text>
-            
             <View style={styles.focusButtonsContainer}>
               {(['Saúde física', 'Saúde mental', 'Saúde social'] as TipoFoco[]).map((foco, index) => (
                 <TouchableOpacity key={index} activeOpacity={0.8} onPress={() => iniciarCheckin(foco)}>
@@ -282,12 +360,10 @@ export default function App() {
                 </TouchableOpacity>
               ))}
             </View>
-
             <TouchableOpacity style={styles.historyButton} onPress={abrirHistorico}>
               <FontAwesome5 name="chart-pie" size={16} color={COLORS.primary} style={{marginRight: 10}} />
               <Text style={styles.historyButtonText}>Meu Dashboard</Text>
             </TouchableOpacity>
-
             <TouchableOpacity style={styles.logoutWrapper} onPress={handleLogout}>
               <Text style={styles.linkTextBold}>Sair da conta</Text>
             </TouchableOpacity>
@@ -298,24 +374,18 @@ export default function App() {
     );
   }
 
-  // ==========================================
-  // TELA HISTÓRICO E DASHBOARD (ID 4)
-  // ==========================================
   if (user && etapaAtual === 'HISTORICO') {
     const stats = calcularEstatisticas();
-
     return (
       <View style={styles.container}>
         <ScrollView contentContainerStyle={styles.formScrollContainer} showsVerticalScrollIndicator={false}>
           <View style={styles.contentWrapper}>
-            
             <View style={styles.formHeader}>
               <TouchableOpacity onPress={() => setEtapaAtual('HOME')} style={{flexDirection: 'row', alignItems: 'center'}}>
                 <Ionicons name="arrow-back" size={24} color={COLORS.textDark} style={{marginRight: 10}} />
                 <Text style={styles.formHeaderTitle}>Meu Dashboard</Text>
               </TouchableOpacity>
             </View>
-
             {loadingHistorico ? (
               <View style={styles.centerContent}>
                 <ActivityIndicator size="large" color={COLORS.primary} />
@@ -328,10 +398,8 @@ export default function App() {
               </View>
             ) : (
               <>
-                {/* O NOVO GRÁFICO / DASHBOARD */}
                 <View style={styles.dashboardCard}>
                   <Text style={styles.dashboardTitle}>Resumo dos seus Hábitos</Text>
-                  
                   <View style={styles.statsRow}>
                     <View style={styles.statBox}>
                       <Text style={styles.statValue}>{historico.length}</Text>
@@ -342,7 +410,6 @@ export default function App() {
                       <Text style={styles.statLabel}>Foco Principal</Text>
                     </View>
                   </View>
-
                   <Text style={styles.chartLabel}>Distribuição de Foco</Text>
                   <View style={styles.chartBarContainer}>
                     {stats.fisico > 0 && <View style={[styles.chartSegment, { flex: stats.fisico, backgroundColor: COLORS.primary }]} />}
@@ -350,15 +417,12 @@ export default function App() {
                     {stats.social > 0 && <View style={[styles.chartSegment, { flex: stats.social, backgroundColor: COLORS.tertiary }]} />}
                     {stats.geral > 0 && <View style={[styles.chartSegment, { flex: stats.geral, backgroundColor: COLORS.textLight }]} />}
                   </View>
-
                   <View style={styles.chartLegend}>
                     {stats.fisico > 0 && <Text style={styles.legendText}><View style={[styles.legendDot, {backgroundColor: COLORS.primary}]} /> Físico</Text>}
                     {stats.mental > 0 && <Text style={styles.legendText}><View style={[styles.legendDot, {backgroundColor: COLORS.secondary}]} /> Mental</Text>}
                     {stats.social > 0 && <Text style={styles.legendText}><View style={[styles.legendDot, {backgroundColor: COLORS.tertiary}]} /> Social</Text>}
                   </View>
                 </View>
-
-                {/* LINHA DO TEMPO */}
                 <Text style={styles.timelineTitle}>Linha do Tempo</Text>
                 {historico.map((item, index) => (
                   <View key={item.id || index} style={styles.historyCard}>
@@ -386,12 +450,8 @@ export default function App() {
     );
   }
 
-  // ==========================================
-  // TELA DO FORMULÁRIO (DINÂMICO) 
-  // ==========================================
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
-      {/* ... (O FORMULÁRIO ESTÁ INTACTO E MANTIDO 100% IGUAL) ... */}
       <ScrollView contentContainerStyle={styles.formScrollContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.contentWrapper}>
           <View style={styles.formHeader}>
@@ -427,7 +487,7 @@ export default function App() {
                 {passoFormulario === 3 && (
                   <>
                     <Text style={styles.stepTitle}>Atividade Física</Text>
-                    <Text style={styles.stepSubtitle}>Movimentando o corpo (ID 2 do Requisito)</Text>
+                    <Text style={styles.stepSubtitle}>Movimentando o corpo</Text>
                     <Text style={styles.label}>Qual atividade fez hoje e por quanto tempo?</Text>
                     <TextInput style={[styles.input, {height: 100, textAlignVertical: 'top'}]} placeholder="Ex: Caminhada de 30 minutos..." value={atividadeFisica} onChangeText={setAtividadeFisica} multiline />
                   </>
@@ -490,7 +550,6 @@ export default function App() {
   );
 }
 
-// ESTILOS ATUALIZADOS COM O DASHBOARD
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   scrollContainer: { flexGrow: 1, paddingHorizontal: 30, paddingTop: 60, paddingBottom: 40, justifyContent: 'center' },
@@ -546,8 +605,6 @@ const styles = StyleSheet.create({
   historyLabel: { fontSize: 13, fontWeight: 'bold', color: COLORS.textLight, textTransform: 'uppercase', marginBottom: 5 },
   historyAiText: { fontSize: 15, color: COLORS.textDark, lineHeight: 22, fontStyle: 'italic' },
   historyText: { fontSize: 14, color: COLORS.textDark, marginBottom: 4, lineHeight: 20 },
-
-  // NOVOS: Estilos do Dashboard (Gráfico)
   dashboardCard: { backgroundColor: '#F3EFFF', borderRadius: 15, padding: 25, borderWidth: 1, borderColor: '#EADAF5', marginBottom: 30 },
   dashboardTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.primary, marginBottom: 15, textAlign: 'center' },
   statsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 25 },
