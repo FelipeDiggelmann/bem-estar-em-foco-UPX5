@@ -15,6 +15,8 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 const COLORS = {
   primary: '#5235E8',
+  secondary: '#A928C4',
+  tertiary: '#20B2AA',
   background: '#F9F9FB',
   textDark: '#1E1E2D',
   textLight: '#7A7A8A',
@@ -34,7 +36,6 @@ const obterDataFormatada = () => {
   };
 };
 
-// Formata a data que vem do banco de dados (ex: 2026-05-06T15:00:00.000Z -> 06/05/2026)
 const formatarDataIso = (dataIso: string) => {
   if (!dataIso) return 'Data desconhecida';
   const data = new Date(dataIso);
@@ -48,7 +49,6 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [isLoginScreen, setIsLoginScreen] = useState(true);
   
-  // Controle de Navegação Interna (Agora com HISTORICO)
   const [etapaAtual, setEtapaAtual] = useState<'HOME' | 'FORM' | 'HISTORICO'>('HOME');
   const [passoFormulario, setPassoFormulario] = useState(1);
   const [focoSelecionado, setFocoSelecionado] = useState<TipoFoco | null>(null);
@@ -67,7 +67,6 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [conselho, setConselho] = useState('');
 
-  // Novos Estados para o Histórico
   const [historico, setHistorico] = useState<any[]>([]);
   const [loadingHistorico, setLoadingHistorico] = useState(false);
 
@@ -116,7 +115,6 @@ export default function App() {
     setEtapaAtual('FORM');
   };
 
-  // Função para buscar o histórico no backend
   const abrirHistorico = async () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setEtapaAtual('HISTORICO');
@@ -182,10 +180,34 @@ export default function App() {
     }
   };
 
+  // ==========================================
+  // FUNÇÕES DO GRÁFICO (DASHBOARD)
+  // ==========================================
+  const calcularEstatisticas = () => {
+    let fisico = 0, mental = 0, social = 0, geral = 0;
+    historico.forEach(item => {
+      if (item.foco === 'Saúde física') fisico++;
+      else if (item.foco === 'Saúde mental') mental++;
+      else if (item.foco === 'Saúde social') social++;
+      else geral++;
+    });
+
+    const maxFoco = Math.max(fisico, mental, social, geral);
+    let focoPrincipal = 'Nenhum';
+    if (maxFoco > 0) {
+      if (maxFoco === fisico) focoPrincipal = 'Físico';
+      else if (maxFoco === mental) focoPrincipal = 'Mental';
+      else if (maxFoco === social) focoPrincipal = 'Social';
+      else focoPrincipal = 'Geral';
+    }
+
+    return { fisico, mental, social, geral, focoPrincipal };
+  };
+
   if (authLoading) return <View style={styles.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
 
   // ==========================================
-  // TELA DE AUTENTICAÇÃO (LOGIN / REGISTRO) - Mantida
+  // TELA DE AUTENTICAÇÃO (LOGIN / REGISTRO)
   // ==========================================
   if (!user) {
     return (
@@ -261,10 +283,9 @@ export default function App() {
               ))}
             </View>
 
-            {/* BOTAO PARA ACESSAR O HISTORICO */}
             <TouchableOpacity style={styles.historyButton} onPress={abrirHistorico}>
-              <FontAwesome5 name="history" size={16} color={COLORS.primary} style={{marginRight: 10}} />
-              <Text style={styles.historyButtonText}>Ver meu Histórico (Dashboard)</Text>
+              <FontAwesome5 name="chart-pie" size={16} color={COLORS.primary} style={{marginRight: 10}} />
+              <Text style={styles.historyButtonText}>Meu Dashboard</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.logoutWrapper} onPress={handleLogout}>
@@ -278,9 +299,11 @@ export default function App() {
   }
 
   // ==========================================
-  // NOVA TELA: HISTÓRICO (DASHBOARD)
+  // TELA HISTÓRICO E DASHBOARD (ID 4)
   // ==========================================
   if (user && etapaAtual === 'HISTORICO') {
+    const stats = calcularEstatisticas();
+
     return (
       <View style={styles.container}>
         <ScrollView contentContainerStyle={styles.formScrollContainer} showsVerticalScrollIndicator={false}>
@@ -289,14 +312,14 @@ export default function App() {
             <View style={styles.formHeader}>
               <TouchableOpacity onPress={() => setEtapaAtual('HOME')} style={{flexDirection: 'row', alignItems: 'center'}}>
                 <Ionicons name="arrow-back" size={24} color={COLORS.textDark} style={{marginRight: 10}} />
-                <Text style={styles.formHeaderTitle}>Meu Histórico</Text>
+                <Text style={styles.formHeaderTitle}>Meu Dashboard</Text>
               </TouchableOpacity>
             </View>
 
             {loadingHistorico ? (
               <View style={styles.centerContent}>
                 <ActivityIndicator size="large" color={COLORS.primary} />
-                <Text style={{marginTop: 10, color: COLORS.textLight}}>Buscando seus dados...</Text>
+                <Text style={{marginTop: 10, color: COLORS.textLight}}>Analisando seus dados...</Text>
               </View>
             ) : historico.length === 0 ? (
               <View style={styles.centerContent}>
@@ -304,26 +327,58 @@ export default function App() {
                 <Text style={styles.stepSubtitle}>Você ainda não fez nenhum check-in.</Text>
               </View>
             ) : (
-              historico.map((item, index) => (
-                <View key={item.id || index} style={styles.historyCard}>
-                  <View style={styles.historyCardHeader}>
-                    <Text style={styles.historyBadge}>{item.foco || 'Geral'}</Text>
-                    <Text style={styles.historyDate}>{formatarDataIso(item.dataCriacao)}</Text>
+              <>
+                {/* O NOVO GRÁFICO / DASHBOARD */}
+                <View style={styles.dashboardCard}>
+                  <Text style={styles.dashboardTitle}>Resumo dos seus Hábitos</Text>
+                  
+                  <View style={styles.statsRow}>
+                    <View style={styles.statBox}>
+                      <Text style={styles.statValue}>{historico.length}</Text>
+                      <Text style={styles.statLabel}>Registros Totais</Text>
+                    </View>
+                    <View style={styles.statBox}>
+                      <Text style={styles.statValue}>{stats.focoPrincipal}</Text>
+                      <Text style={styles.statLabel}>Foco Principal</Text>
+                    </View>
                   </View>
-                  
-                  <Text style={styles.historyLabel}>Conselho da IA:</Text>
-                  <Text style={styles.historyAiText}>{item.conselhoIA}</Text>
-                  
-                  <View style={{height: 1, backgroundColor: COLORS.inputBorder, marginVertical: 15}} />
-                  
-                  <Text style={styles.historyLabel}>Seu relato:</Text>
-                  {item.humor ? <Text style={styles.historyText}>• Humor: {item.humor}</Text> : null}
-                  {item.alimentacao ? <Text style={styles.historyText}>• Alimentação: {item.alimentacao}</Text> : null}
-                  {item.atividadeFisica ? <Text style={styles.historyText}>• Físico: {item.atividadeFisica}</Text> : null}
-                </View>
-              ))
-            )}
 
+                  <Text style={styles.chartLabel}>Distribuição de Foco</Text>
+                  <View style={styles.chartBarContainer}>
+                    {stats.fisico > 0 && <View style={[styles.chartSegment, { flex: stats.fisico, backgroundColor: COLORS.primary }]} />}
+                    {stats.mental > 0 && <View style={[styles.chartSegment, { flex: stats.mental, backgroundColor: COLORS.secondary }]} />}
+                    {stats.social > 0 && <View style={[styles.chartSegment, { flex: stats.social, backgroundColor: COLORS.tertiary }]} />}
+                    {stats.geral > 0 && <View style={[styles.chartSegment, { flex: stats.geral, backgroundColor: COLORS.textLight }]} />}
+                  </View>
+
+                  <View style={styles.chartLegend}>
+                    {stats.fisico > 0 && <Text style={styles.legendText}><View style={[styles.legendDot, {backgroundColor: COLORS.primary}]} /> Físico</Text>}
+                    {stats.mental > 0 && <Text style={styles.legendText}><View style={[styles.legendDot, {backgroundColor: COLORS.secondary}]} /> Mental</Text>}
+                    {stats.social > 0 && <Text style={styles.legendText}><View style={[styles.legendDot, {backgroundColor: COLORS.tertiary}]} /> Social</Text>}
+                  </View>
+                </View>
+
+                {/* LINHA DO TEMPO */}
+                <Text style={styles.timelineTitle}>Linha do Tempo</Text>
+                {historico.map((item, index) => (
+                  <View key={item.id || index} style={styles.historyCard}>
+                    <View style={styles.historyCardHeader}>
+                      <Text style={[styles.historyBadge, { backgroundColor: item.foco === 'Saúde física' ? COLORS.primary : item.foco === 'Saúde mental' ? COLORS.secondary : COLORS.tertiary }]}>
+                        {item.foco || 'Geral'}
+                      </Text>
+                      <Text style={styles.historyDate}>{formatarDataIso(item.dataCriacao)}</Text>
+                    </View>
+                    <Text style={styles.historyLabel}>Conselho da IA:</Text>
+                    <Text style={styles.historyAiText}>{item.conselhoIA}</Text>
+                    <View style={{height: 1, backgroundColor: COLORS.inputBorder, marginVertical: 15}} />
+                    <Text style={styles.historyLabel}>Seu relato:</Text>
+                    {item.humor ? <Text style={styles.historyText}>• Humor: {item.humor}</Text> : null}
+                    {item.alimentacao ? <Text style={styles.historyText}>• Alimentação: {item.alimentacao}</Text> : null}
+                    {item.atividadeFisica ? <Text style={styles.historyText}>• Físico: {item.atividadeFisica}</Text> : null}
+                  </View>
+                ))}
+              </>
+            )}
           </View>
         </ScrollView>
         <StatusBar style="dark" />
@@ -332,10 +387,11 @@ export default function App() {
   }
 
   // ==========================================
-  // TELA DO FORMULÁRIO (DINÂMICO) - Mantida 100% igual ao anterior
+  // TELA DO FORMULÁRIO (DINÂMICO) 
   // ==========================================
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
+      {/* ... (O FORMULÁRIO ESTÁ INTACTO E MANTIDO 100% IGUAL) ... */}
       <ScrollView contentContainerStyle={styles.formScrollContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.contentWrapper}>
           <View style={styles.formHeader}>
@@ -373,7 +429,7 @@ export default function App() {
                     <Text style={styles.stepTitle}>Atividade Física</Text>
                     <Text style={styles.stepSubtitle}>Movimentando o corpo (ID 2 do Requisito)</Text>
                     <Text style={styles.label}>Qual atividade fez hoje e por quanto tempo?</Text>
-                    <TextInput style={[styles.input, {height: 100, textAlignVertical: 'top'}]} placeholder="Ex: Caminhada de 30 minutos / Musculação intensa..." value={atividadeFisica} onChangeText={setAtividadeFisica} multiline />
+                    <TextInput style={[styles.input, {height: 100, textAlignVertical: 'top'}]} placeholder="Ex: Caminhada de 30 minutos..." value={atividadeFisica} onChangeText={setAtividadeFisica} multiline />
                   </>
                 )}
               </>
@@ -383,7 +439,7 @@ export default function App() {
                 <Text style={styles.stepTitle}>Equilíbrio Emocional</Text>
                 <Text style={styles.stepSubtitle}>Como estão suas emoções hoje?</Text>
                 <Text style={styles.label}>Descreva seu humor ou nível de estresse</Text>
-                <TextInput style={[styles.input, {height: 100, textAlignVertical: 'top'}]} placeholder="Ex: Me senti calmo, mas tive um pico de estresse à tarde..." value={humor} onChangeText={setHumor} multiline />
+                <TextInput style={[styles.input, {height: 100, textAlignVertical: 'top'}]} placeholder="Ex: Me senti calmo..." value={humor} onChangeText={setHumor} multiline />
               </>
             )}
             {focoSelecionado === 'Saúde social' && passoFormulario === 2 && (
@@ -391,7 +447,7 @@ export default function App() {
                 <Text style={styles.stepTitle}>Conexões Sociais</Text>
                 <Text style={styles.stepSubtitle}>Suas interações do dia</Text>
                 <Text style={styles.label}>Como foram suas interações com outras pessoas?</Text>
-                <TextInput style={[styles.input, {height: 100, textAlignVertical: 'top'}]} placeholder="Ex: Almocei com amigos / Tive uma boa conversa com minha família..." value={humor} onChangeText={setHumor} multiline />
+                <TextInput style={[styles.input, {height: 100, textAlignVertical: 'top'}]} placeholder="Ex: Almocei com amigos..." value={humor} onChangeText={setHumor} multiline />
               </>
             )}
             {passoFormulario === totalEtapas && (
@@ -434,7 +490,7 @@ export default function App() {
   );
 }
 
-// ESTILOS (Com a adição dos estilos do botão de histórico e dos cards)
+// ESTILOS ATUALIZADOS COM O DASHBOARD
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   scrollContainer: { flexGrow: 1, paddingHorizontal: 30, paddingTop: 60, paddingBottom: 40, justifyContent: 'center' },
@@ -464,11 +520,8 @@ const styles = StyleSheet.create({
   focusButtonsContainer: { width: '100%', gap: 20 },
   gradientButton: { borderRadius: 12, paddingVertical: 20, alignItems: 'center', justifyContent: 'center', shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5, elevation: 5 },
   gradientButtonText: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
-  
-  // NOVO: Estilo do botão Histórico na Home
   historyButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 25, paddingVertical: 15, borderRadius: 12, borderWidth: 1, borderColor: COLORS.primary, backgroundColor: 'transparent' },
   historyButtonText: { color: COLORS.primary, fontSize: 16, fontWeight: 'bold' },
-  
   logoutWrapper: { marginTop: 40, alignItems: 'center', padding: 10 },
   blobTopLeft: { position: 'absolute', top: -100, left: -100, width: 300, height: 300, borderRadius: 150, backgroundColor: '#EADAF5', opacity: 0.5 },
   blobBottomRight: { position: 'absolute', bottom: -100, right: -100, width: 350, height: 350, borderRadius: 175, backgroundColor: '#EADAF5', opacity: 0.5 },
@@ -486,13 +539,26 @@ const styles = StyleSheet.create({
   outlineButtonText: { color: COLORS.primary, fontSize: 16, fontWeight: 'bold' },
   aiCard: { backgroundColor: '#F3EFFF', borderRadius: 12, padding: 20, borderWidth: 1, borderColor: '#EADAF5', marginTop: 10 },
   aiCardText: { fontSize: 16, color: COLORS.textDark, lineHeight: 24, textAlign: 'center' },
-
-  // NOVOS: Estilos dos Cards de Histórico
   historyCard: { backgroundColor: COLORS.inputBg, borderRadius: 15, padding: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2, marginBottom: 20 },
   historyCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
-  historyBadge: { backgroundColor: COLORS.primary, color: '#FFF', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, fontSize: 12, fontWeight: 'bold', overflow: 'hidden' },
+  historyBadge: { color: '#FFF', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, fontSize: 12, fontWeight: 'bold', overflow: 'hidden' },
   historyDate: { fontSize: 13, color: COLORS.textLight, fontWeight: '600' },
   historyLabel: { fontSize: 13, fontWeight: 'bold', color: COLORS.textLight, textTransform: 'uppercase', marginBottom: 5 },
   historyAiText: { fontSize: 15, color: COLORS.textDark, lineHeight: 22, fontStyle: 'italic' },
-  historyText: { fontSize: 14, color: COLORS.textDark, marginBottom: 4, lineHeight: 20 }
+  historyText: { fontSize: 14, color: COLORS.textDark, marginBottom: 4, lineHeight: 20 },
+
+  // NOVOS: Estilos do Dashboard (Gráfico)
+  dashboardCard: { backgroundColor: '#F3EFFF', borderRadius: 15, padding: 25, borderWidth: 1, borderColor: '#EADAF5', marginBottom: 30 },
+  dashboardTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.primary, marginBottom: 15, textAlign: 'center' },
+  statsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 25 },
+  statBox: { flex: 1, alignItems: 'center', backgroundColor: COLORS.inputBg, padding: 15, borderRadius: 12, marginHorizontal: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1 },
+  statValue: { fontSize: 24, fontWeight: 'bold', color: COLORS.textDark },
+  statLabel: { fontSize: 12, color: COLORS.textLight, marginTop: 4, fontWeight: '600' },
+  chartLabel: { fontSize: 14, fontWeight: 'bold', color: COLORS.textDark, marginBottom: 10 },
+  chartBarContainer: { height: 12, width: '100%', flexDirection: 'row', borderRadius: 6, overflow: 'hidden', backgroundColor: COLORS.inputBorder },
+  chartSegment: { height: '100%' },
+  chartLegend: { flexDirection: 'row', justifyContent: 'center', marginTop: 15, flexWrap: 'wrap', gap: 15 },
+  legendText: { fontSize: 13, color: COLORS.textDark, flexDirection: 'row', alignItems: 'center' },
+  legendDot: { width: 10, height: 10, borderRadius: 5, marginRight: 5 },
+  timelineTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.textDark, marginBottom: 15, marginTop: 10 },
 });
