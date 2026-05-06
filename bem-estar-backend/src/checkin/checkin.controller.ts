@@ -1,8 +1,8 @@
 // src/checkin/checkin.controller.ts
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param } from '@nestjs/common';
 import { CheckinService } from './checkin.service';
 
-@Controller('checkin') // Define a rota como localhost:3000/checkin
+@Controller('checkin')
 export class CheckinController {
   constructor(private readonly checkinService: CheckinService) {}
 
@@ -12,8 +12,22 @@ export class CheckinController {
     @Body('sono') sono: string,
     @Body('humor') humor: string,
     @Body('alimentacao') alimentacao: string,
+    @Body('atividadeFisica') atividadeFisica?: string,
+    @Body('foco') foco?: string,
   ) {
-    // Repassa os dados recebidos do app para o serviço que acabamos de criar
-    return this.checkinService.criarCheckin(userId, sono, humor, alimentacao);
+    return this.checkinService.criarCheckin(
+      userId, 
+      sono, 
+      humor, 
+      alimentacao, 
+      atividadeFisica, 
+      foco
+    );
+  }
+
+  // NOVA ROTA: GET /checkin/:userId
+  @Get(':userId')
+  async obterHistorico(@Param('userId') userId: string) {
+    return this.checkinService.buscarHistorico(userId);
   }
 }
